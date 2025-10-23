@@ -124,6 +124,20 @@
           <input type="file" id="importFile" class="file-input" accept=".csv, .json" />
           <button type="button" id="importBtn">Nhập CSV/JSON</button>
         </div>
+        <div class="group">
+          <button type="button" id="connectFile">Kết nối tệp…</button>
+          <button type="button" id="openExistingFile">Chọn tệp JSON có sẵn</button>
+          <button type="button" id="disconnectFile" class="danger">Ngắt kết nối</button>
+          <span id="fileBadge" class="badge yes hidden">Đã kết nối</span>
+        </div>
+        <div class="group" style="min-width:420px">
+          <input type="text" id="cloudURL" class="small" placeholder="URL đồng bộ (Apps Script/Webhook)" style="width:260px" />
+          <label style="display:inline-flex;align-items:center;gap:4px;">
+            <input type="checkbox" id="cloudToggle" /> Bật đồng bộ web
+          </label>
+          <button type="button" id="cloudRestore">Khôi phục web</button>
+        </div>
+
       </div>
 
       <div class="scroll" id="scrollWrap">
@@ -232,6 +246,173 @@
   var rowTpl = $("#rowTpl");
   var toast = $("#toast");
   var colgroup = $("#colgroup");
+  // ===== Persistent File Link + Cloud Sync =====
+  var connectFileBtn = $("#connectFile");
+  var openExistingFileBtn = $("#openExistingFile");
+  var disconnectFileBtn = $("#disconnectFile");
+  var fileBadge = $("#fileBadge");
+  var cloudURLInput = $("#cloudURL");
+  var cloudToggle = $("#cloudToggle");
+  var cloudRestoreBtn = $("#cloudRestore");
+
+  var fileHandle = null; // File System Access handle
+  var lastCloudAt = 0;
+
+  // --- IndexedDB tiny KV ---
+  const DB_NAME = 'gia-ban-online';
+  const STORE = 'kv';
+  function idbOpen() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, 1);
+      req.onupgradeneeded = (e) => { e.target.result.createObjectStore(STORE); };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  function idbPut(key, val){
+    return idbOpen().then(db => new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readwrite');
+      tx.objectStore(STORE).put(val, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    }));
+  }
+  function idbGet(key){
+    return idbOpen().then(db => new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readonly');
+      const req = tx.objectStore(STORE).get(key);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    }));
+  }
+  function idbDel(key){
+    return idbOpen().then(db => new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readwrite');
+      tx.objectStore(STORE).delete(key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    }));
+  }
+
+  async function ensurePersistence(){
+    try { await navigator.storage?.persist?.(); } catch(e){}
+  }
+
+  async function pickAndConnectFile(){
+    if (!window.showSaveFilePicker){
+      alert("Trình duyệt không hỗ trợ File System Access API. Dùng Chrome/Edge mới trên https:// hoặc http://localhost.");
+      return;
+    }
+    try {
+      const h = await window.showSaveFilePicker({
+        suggestedName: "du_lieu_gia_ban.json",
+        types: [{description:"JSON", accept: {"application/json": [".json"]}}]
+      });
+      const perm = await h.requestPermission({mode:'readwrite'});
+      if (perm !== 'granted'){ alert("Chưa cấp quyền ghi tệp."); return; }
+      fileHandle = h;
+      await idbPut('fileHandle', h);
+      fileBadge?.classList?.remove("hidden");
+      await saveToFile();
+      showToast("Đã kết nối tệp & lưu lần đầu");
+    } catch(e){ console.warn(e); }
+  }
+
+  async function openExistingJSON(){
+    if (!window.showOpenFilePicker){
+      alert("Trình duyệt không hỗ trợ File System Access API.");
+      return;
+    }
+    try {
+      const [h] = await window.showOpenFilePicker({
+        multiple: false,
+        types: [{description:"JSON", accept: {"application/json": [".json"]}}]
+      });
+      const perm = await h.requestPermission({mode:'readwrite'});
+      if (perm !== 'granted'){ alert("Chưa cấp quyền ghi tệp."); return; }
+      fileHandle = h;
+      await idbPut('fileHandle', h);
+      fileBadge?.classList?.remove("hidden");
+      await saveToFile();
+      showToast("Đã kết nối tệp có sẵn");
+    } catch(e){ console.warn(e); }
+  }
+
+  async function disconnectFile(){
+    fileHandle = null;
+    await idbDel('fileHandle');
+    fileBadge?.classList?.add("hidden");
+    showToast("Đã ngắt kết nối tệp");
+  }
+
+  async function tryReconnectFile(){
+    try {
+      const saved = await idbGet('fileHandle');
+      if (!saved) return;
+      const perm = await saved.queryPermission({mode:'readwrite'});
+      if (perm === 'granted' || await saved.requestPermission({mode:'readwrite'}) === 'granted'){
+        fileHandle = saved;
+        fileBadge?.classList?.remove("hidden");
+      }
+    } catch(e){ console.warn("Reconnect failed", e); }
+  }
+
+  async function saveToFile(){
+    if (!fileHandle) return;
+    try{
+      const writable = await fileHandle.createWritable();
+      await writable.write(new Blob([JSON.stringify(currentState(), null, 2)], {type:"application/json"}));
+      await writable.close();
+    }catch(e){
+      console.warn("Ghi tệp lỗi:", e);
+    }
+  }
+
+  async function saveToCloud(){
+    if (!cloudToggle || !cloudToggle.checked) return;
+    var url = (cloudURLInput && cloudURLInput.value || "").trim();
+    if (!url) return;
+    try{
+      await fetch(url, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(currentState())
+      });
+      var now = Date.now();
+      if (now - lastCloudAt > 20000){
+        showToast("Đã đồng bộ web");
+        lastCloudAt = now;
+      }
+    }catch(e){
+      console.warn("Cloud sync failed:", e);
+    }
+  }
+
+  async function restoreFromCloud(){
+    var url = (cloudURLInput && cloudURLInput.value || "").trim();
+    if (!url){ alert("Nhập URL đồng bộ trước."); return; }
+    try{
+      var res = await fetch(url + (url.includes("?") ? "&" : "?") + "method=GET", {cache:'no-store'});
+      if (!res.ok){ alert("Không thể khôi phục từ web: " + res.status); return; }
+      var obj = await res.json();
+      var state = obj.data && obj.data.rows ? obj.data : obj;
+      if (!state) return;
+      toolName.value = state.toolName || toolName.value;
+      defaultFeeInput.value = state.defaultFee || defaultFeeInput.value;
+      defaultSaleInput.value = state.defaultSale || defaultSaleInput.value;
+      if (state.theme) setTheme(state.theme);
+      fromData(state.rows || []);
+      scheduleAutosave(true);
+      showToast("Đã khôi phục từ web");
+    }catch(e){
+      alert("Lỗi khôi phục từ web: " + e.message);
+    }
+  }
+
+  // Auto reconnect on load
+  ensurePersistence();
+  tryReconnectFile();
+
 
   // ===== AUTOSAVE (real-time) =====
   var AUTOSAVE_KEY = "gia_online_tool_auto_v15";
@@ -388,6 +569,14 @@
     recompute(tr);
     showToast("Đã thêm 1 dòng");
     updateStickyOffsets();
+  if (connectFileBtn) connectFileBtn.addEventListener("click", pickAndConnectFile);
+  if (openExistingFileBtn) openExistingFileBtn.addEventListener("click", openExistingJSON);
+  if (disconnectFileBtn) disconnectFileBtn.addEventListener("click", disconnectFile);
+  if (cloudRestoreBtn) cloudRestoreBtn.addEventListener("click", restoreFromCloud);
+  if (cloudToggle) cloudToggle.addEventListener("change", function(){ if (cloudToggle.checked){ saveToCloud(); } });
+
+  setInterval(saveToCloud, 60000);
+
     scheduleAutosave(true);
   }
 
@@ -716,8 +905,9 @@
   function saveNow(){
     try {
       localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(currentState()));
+      saveToFile();
+      saveToCloud();
       var now = Date.now();
-      // avoid spamming toast: show at most once every 20s
       if (now - lastToastAt > 20000){
         showToast("Đã tự động lưu");
         lastToastAt = now;
