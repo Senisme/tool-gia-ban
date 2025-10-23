@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Công cụ tính giá bán online (v15 + Autosave)</title>
+  <style>
+    :root {
+      --bg:#f5f5f7; --card:#ffffff; --muted:#6b7280; --accent:#2563eb; --danger:#dc2626; --border:#e5e7eb;
+      --text:#111827; --thead:#f3f4f6; --input-bg:#ffffff;
+      --badge-ok:#065F46; --badge-ok-bg:#DCFCE7; --badge-no:#991B1B; --badge-no-bg:#FEE2E2;
+      --cell-pad: 8px;
+      --scrollbar:#c7cbd1; --scrollbarTrack:#e7e9ee;
+    }
+    body.dark {
+      --bg:#121212; --card:#1b1b1b; --muted:#a3a3a3; --accent:#3b82f6; --danger:#ef4444; --border:#2a2a2a;
+      --text:#eaeaea; --thead:#1f1f1f; --input-bg:#151515;
+      --badge-ok:#22c55e; --badge-ok-bg:#0e2a18; --badge-no:#f97373; --badge-no-bg:#2a1212;
+      --scrollbar:#6b7280; --scrollbarTrack:#1c1c1c;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; }
+    body { margin:0; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background: var(--bg); color:var(--text); }
+    header { padding: 14px 24px; background: linear-gradient(180deg,var(--card), rgba(255,255,255,0)); border-bottom: 1px solid var(--border); }
+    .titlebar { display:flex; align-items:center; gap:12px; justify-content: space-between; }
+    .left { display:flex; align-items:center; gap:12px; }
+    .toolname { font-size: 20px; font-weight: 700; padding:6px 10px; border:1px solid var(--border); border-radius:10px; background:var(--input-bg); min-width: 420px; color:var(--text); }
+    .sub { color: var(--muted); font-size: 12px; }
+    .wrap { width: 100%; max-width: none; margin: 0 auto; padding: 12px 24px; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 12px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+    .toolbar { display:flex; align-items:center; gap: 8px; overflow:auto; white-space:nowrap; padding:10px; border-bottom:1px dashed var(--border); }
+    .toolbar .group { display:flex; gap:8px; align-items:center; }
+    label { font-size: 13px; color:var(--text); white-space:nowrap; }
+    input[type="number"], input[type="text"] { width: 100%; padding:8px 10px; border:1px solid var(--border); border-radius:10px; background:var(--input-bg); color:var(--text); }
+    input[type="number"] { text-align: right; }
+    input.small { width: 220px; }
+    button { padding:8px 12px; border:1px solid var(--border); border-radius:10px; background:var(--card); color:var(--text); cursor:pointer; }
+    button.primary { background: var(--accent); border-color: var(--accent); color:#fff; }
+    button.danger { background: var(--danger); border-color: var(--danger); color:#fff; }
+    table { width:100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; }
+    thead th { background:var(--thead); border-bottom:1px solid var(--border); padding:var(--cell-pad); font-size:13px; position: sticky; top: 0; z-index: 3; }
+    tbody td { border-bottom:1px solid var(--border); padding:var(--cell-pad); vertical-align: middle; background: var(--card); }
+    /* Header alignment per type */
+    th.text { text-align:left; }
+    th.num  { text-align:right; }
+    th.center { text-align:center; }
+    td.right { text-align:right; }
+    .muted { color: var(--muted); font-size: 12px; }
+    .badge { padding:2px 8px; border-radius:999px; font-size:12px; display:inline-block; }
+    .yes { background:var(--badge-ok-bg); color:var(--badge-ok); }
+    .no  { background:var(--badge-no-bg); color:var(--badge-no); }
+    .file-input { display:none; }
+    footer { padding:10px 24px; color:var(--muted); font-size:12px; text-align:center; }
+    .scroll { overflow:auto; height: calc(100vh - 250px); border:1px solid var(--border); border-radius: 12px; }
+    .hidden { display:none !important; }
+    .theme-btn { display:inline-flex; align-items:center; gap:6px; }
+    /* Inputs fill cell */
+    td > input { width:100%; min-width: 0; background:var(--input-bg); color:var(--text); }
+    /* Sticky first two columns */
+    th.sticky, td.sticky { position: sticky; left: 0; z-index: 4; background: var(--card); }
+    th.sticky-2, td.sticky-2 { position: sticky; left: 0; z-index: 4; background: var(--card); } /* left set by script */
+    td.sticky, th.sticky { box-shadow: 2px 0 0 0 var(--border); }
+    td.sticky-2, th.sticky-2 { box-shadow: 2px 0 0 0 var(--border); }
+    /* Scrollbar styling for table area + toolbar */
+    .scroll::-webkit-scrollbar,
+    .toolbar::-webkit-scrollbar { height: 12px; width: 12px; }
+    .scroll::-webkit-scrollbar-thumb,
+    .toolbar::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 10px; border: 2px solid var(--scrollbarTrack); }
+    .scroll::-webkit-scrollbar-track,
+    .toolbar::-webkit-scrollbar-track { background: var(--scrollbarTrack); border-radius: 10px; }
+    .scroll { scrollbar-color: var(--scrollbar) var(--scrollbarTrack); scrollbar-width: thin; }
+    .toolbar { scrollbar-color: var(--scrollbar) var(--scrollbarTrack); scrollbar-width: thin; }
+    /* Hide native number spinners */
+    /* Chrome, Safari, Edge, Opera */
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    /* Firefox */
+    input[type="number"] { -moz-appearance: textfield; }
+    /* Toast */
+    .toast { position:fixed; right:16px; bottom:16px; background:#111827; color:#fff; padding:10px 12px; border-radius:10px; z-index:9999; box-shadow: 0 4px 16px rgba(0,0,0,.3); opacity:0; transform:translateY(8px); transition:.2s; }
+    .toast.show { opacity:1; transform:translateY(0); }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="titlebar">
+      <div class="left">
+        <input id="toolName" class="toolname" value="Công cụ quản lý & tính giá bán online" />
+        <div class="sub">Enter nhảy sang cột kế; cuối dòng Enter sẽ tự thêm dòng mới. (Tự động lưu theo thời gian thực)</div>
+      </div>
+      <div class="right">
+        <button id="themeToggle" class="theme-btn" title="Đổi giao diện sáng/tối">🌙 Dark Mode</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="card">
+      <div class="toolbar" id="toolbar">
+        <div class="group" style="min-width:260px">
+          <label for="defaultFee"><strong>% Phí sàn</strong></label>
+          <input type="number" id="defaultFee" step="0.001" min="0" max="1" value="0.2" style="width:120px" />
+        </div>
+        <div class="group" style="min-width:260px">
+          <label for="defaultSale"><strong>% Giá Sale</strong></label>
+          <input type="number" id="defaultSale" step="0.001" min="0" max="1" value="0.30" style="width:120px" />
+        </div>
+        <div class="group">
+          <button type="button" class="primary" id="addRow">+ Thêm sản phẩm</button>
+          <button type="button" id="add5">+ Thêm 5 dòng</button>
+        </div>
+        <div class="group">
+          <input type="text" id="searchBox" class="small" placeholder="Tìm theo tên hoặc SKU..." />
+          <button type="button" id="clearSearch">Xóa tìm</button>
+        </div>
+        <div class="group">
+          <button type="button" class="danger" id="clearAll">Xóa hết</button>
+        </div>
+        <div class="group">
+          <button type="button" id="exportCSV">Xuất CSV</button>
+          <button type="button" id="exportJSON">Xuất JSON</button>
+          <button type="button" id="exportXLSX">Xuất Excel (.xlsx)</button>
+          <input type="file" id="importFile" class="file-input" accept=".csv, .json" />
+          <button type="button" id="importBtn">Nhập CSV/JSON</button>
+        </div>
+        <div class="group">
+          <button type="button" id="connectFile">Kết nối tệp…</button>
+          <span id="fileBadge" class="badge yes hidden">Đã kết nối</span>
+        </div>
+        <div class="group" style="min-width:420px">
+          <input type="text" id="cloudURL" class="small" placeholder="URL đồng bộ (Apps Script/Webhook)" style="width:260px" />
+          <label style="display:inline-flex;align-items:center;gap:4px;">
+            <input type="checkbox" id="cloudToggle" /> Bật đồng bộ web
+          </label>
+          <button type="button" id="cloudRestore">Khôi phục web</button>
+        </div>
+
+      </div>
+
+      <div class="scroll" id="scrollWrap">
+        <table id="priceTable">
+          <colgroup id="colgroup">
+            <col style="width:3%" />   <!-- STT -->
+            <col style="width:22%" />  <!-- Name -->
+            <col style="width:11%" />  <!-- SKU -->
+            <col style="width:7%" />   <!-- Cost -->
+            <col style="width:7%" />   <!-- Orig -->
+            <col style="width:7%" />   <!-- Price -->
+            <col style="width:7%" />   <!-- Profit -->
+            <col style="width:7%" />   <!-- Target -->
+            <col style="width:7%" />   <!-- Need -->
+            <col style="width:7%" />   <!-- Breakeven -->
+            <col style="width:3%" />   <!-- OK? -->
+            <col style="width:9%" />   <!-- Note -->
+            <col style="width:3%" />   <!-- Actions -->
+          </colgroup>
+          <thead>
+            <tr>
+              <th class="center sticky">STT</th>
+              <th class="text sticky-2">Tên sản phẩm</th>
+              <th class="text">SKU</th>
+              <th class="num">Giá nhập</th>
+              <th class="num">Giá bán gốc</th>
+              <th class="num">Giá bán (sau sale)</th>
+              <th class="num">Lãi (VNĐ)</th>
+              <th class="num">Lợi nhuận mục tiêu (VNĐ)</th>
+              <th class="num">Giá cần đạt (VNĐ)</th>
+              <th class="num">Giá hòa vốn (VNĐ)</th>
+              <th class="center">Có lãi?</th>
+              <th class="text">Ghi chú</th>
+              <th class="center"></th>
+            </tr>
+          </thead>
+          <tbody id="tbody">
+            <tr>
+              <td class="center sttCell sticky">1</td>
+              <td class="sticky-2"><input type="text" class="name seq" placeholder="Tên sản phẩm"></td>
+              <td><input type="text" class="sku seq" placeholder="SKU"></td>
+              <td class="right"><input type="number" class="cost seq" min="0" step="0.001"></td>
+              <td class="right"><input type="number" class="origPrice seq" min="0" step="0.001" placeholder="Giá trước sale"></td>
+              <td class="right"><input type="number" class="price seq" min="0" step="0.001" placeholder="Giá sau sale"></td>
+              <td class="right profit"></td>
+              <td class="right"><input type="number" class="targetProfit seq" min="0" step="0.001"></td>
+              <td class="right needPrice"></td>
+              <td class="right breakeven"></td>
+              <td class="center okCell"></td>
+              <td><input type="text" class="note seq" placeholder="Ghi chú"></td>
+              <td class="center"><button type="button" class="danger delRow">Xóa</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <footer style="text-align:center; color:var(--muted);">
+    © Công cụ tính giá bán — chạy hoàn toàn offline trong trình duyệt của bạn.
+  </footer>
+
+  <template id="rowTpl">
+    <tr>
+      <td class="center sttCell sticky"></td>
+      <td class="sticky-2"><input type="text" class="name seq" placeholder="Tên sản phẩm"></td>
+      <td><input type="text" class="sku seq" placeholder="SKU"></td>
+      <td class="right"><input type="number" class="cost seq" min="0" step="0.001"></td>
+      <td class="right"><input type="number" class="origPrice seq" min="0" step="0.001" placeholder="Giá trước sale"></td>
+      <td class="right"><input type="number" class="price seq" min="0" step="0.001" placeholder="Giá sau sale"></td>
+      <td class="right profit"></td>
+      <td class="right"><input type="number" class="targetProfit seq" min="0" step="0.001"></td>
+      <td class="right needPrice"></td>
+      <td class="right breakeven"></td>
+      <td class="center okCell"></td>
+      <td><input type="text" class="note seq" placeholder="Ghi chú"></td>
+      <td class="center"><button type="button" class="danger delRow">Xóa</button></td>
+    </tr>
+  </template>
+
+<script>
+(function(){
+  if (window.__gia_v15_inited) return; // prevent double init
+  window.__gia_v15_inited = true;
+
+  function $ (sel, root){ return (root||document).querySelector(sel); }
+  function $$ (sel, root){ return Array.prototype.slice.call((root||document).querySelectorAll(sel)); }
+
+  var tbody = $("#tbody");
+  var defaultFeeInput = $("#defaultFee");
+  var defaultSaleInput = $("#defaultSale");
+  var addRowBtn = $("#addRow");
+  var add5Btn = $("#add5");
+  var searchBox = $("#searchBox");
+  var clearSearchBtn = $("#clearSearch");
+  var clearAllBtn = $("#clearAll");
+  var exportCSVBtn = $("#exportCSV");
+  var exportJSONBtn = $("#exportJSON");
+  var exportXLSXBtn = $("#exportXLSX");
+  var importBtn = $("#importBtn");
+  var importFile = $("#importFile");
+  var toolName = $("#toolName");
+  var themeToggle = $("#themeToggle");
+  var rowTpl = $("#rowTpl");
+  var toast = $("#toast");
+  var colgroup = $("#colgroup");
+  // ===== ONLINE & FILE AUTOSAVE ADD-ONS =====
+  var connectFileBtn = $("#connectFile");
+  var fileBadge = $("#fileBadge");
+  var cloudURLInput = $("#cloudURL");
+  var cloudToggle = $("#cloudToggle");
+  var cloudRestoreBtn = $("#cloudRestore");
+  var fileHandle = null; // File System Access handle (session only)
+  var lastCloudAt = 0;
+
+  async function pickAndConnectFile(){
+    if (!window.showSaveFilePicker){
+      alert("Trình duyệt không hỗ trợ File System Access API. Hãy dùng Chrome/Edge mới trên https:// hoặc http://localhost.");
+      return;
+    }
+    try {
+      fileHandle = await window.showSaveFilePicker({
+        suggestedName: "du_lieu_gia_ban.json",
+        types: [{description:"JSON", accept: {"application/json": [".json"]}}]
+      });
+      fileBadge.classList.remove("hidden");
+      await saveToFile(); // first write
+      showToast("Đã kết nối tệp & lưu lần đầu");
+    } catch(e){
+      console.warn("pick cancelled or failed", e);
+    }
+  }
+
+  async function saveToFile(){
+    if (!fileHandle) return;
+    try{
+      const writable = await fileHandle.createWritable();
+      await writable.write(new Blob([JSON.stringify(currentState(), null, 2)], {type:"application/json"}));
+      await writable.close();
+    }catch(e){
+      console.warn("Ghi tệp lỗi:", e);
+    }
+  }
+
+  async function saveToCloud(){
+    if (!cloudToggle || !cloudToggle.checked) return;
+    var url = (cloudURLInput && cloudURLInput.value || "").trim();
+    if (!url) return;
+    try{
+      await fetch(url, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(currentState())
+      });
+      var now = Date.now();
+      if (now - lastCloudAt > 20000){ // toast at most every 20s
+        showToast("Đã đồng bộ web");
+        lastCloudAt = now;
+      }
+    }catch(e){
+      console.warn("Cloud sync failed:", e);
+    }
+  }
+
+  async function restoreFromCloud(){
+    var url = (cloudURLInput && cloudURLInput.value || "").trim();
+    if (!url){
+      alert("Vui lòng nhập URL đồng bộ trước.");
+      return;
+    }
+    try{
+      var res = await fetch(url + (url.includes("?") ? "&" : "?") + "method=GET");
+      if (!res.ok){ alert("Không thể khôi phục từ web: " + res.status); return; }
+      var obj = await res.json();
+      if (!obj || !obj.rows){
+        if (obj && obj.toolName || obj.rows){
+          // OK
+        } else {
+          alert("Dữ liệu web không đúng định dạng.");
+          return;
+        }
+      }
+      var state = obj.data && obj.data.rows ? obj.data : obj;
+      toolName.value = state.toolName || toolName.value;
+      defaultFeeInput.value = state.defaultFee || defaultFeeInput.value;
+      defaultSaleInput.value = state.defaultSale || defaultSaleInput.value;
+      if (state.theme) setTheme(state.theme);
+      fromData(state.rows || []);
+      scheduleAutosave(true);
+      showToast("Đã khôi phục từ web");
+    }catch(e){
+      alert("Lỗi khôi phục từ web: " + e.message);
+    }
+  }
+
+
+  // ===== AUTOSAVE (real-time) =====
+  var AUTOSAVE_KEY = "gia_online_tool_auto_v15";
+  var debounceTimer = null;
+  var lastToastAt = 0;
+
+  function showToast(msg){
+    toast.textContent = msg;
+    toast.classList.add("show");
+    setTimeout(function(){ toast.classList.remove("show"); }, 1200);
+  }
+
+  function updateStickyOffsets(){
+    var firstCol = colgroup.children[0];
+    var leftPx = 0;
+    if (firstCol && firstCol.style.width && firstCol.style.width.indexOf('%') !== -1){
+      var pct = parseFloat(firstCol.style.width);
+      var tableWidth = $("#priceTable").getBoundingClientRect().width;
+      leftPx = tableWidth * (pct/100);
+    } else {
+      leftPx = $("#priceTable").querySelector("thead th").getBoundingClientRect().width;
+    }
+    $$(".sticky-2").forEach(function(el){ el.style.left = leftPx + "px"; });
+  }
+  window.addEventListener("resize", updateStickyOffsets);
+
+  function num(v){
+    if (v===null || v===undefined || v==="") return "";
+    v = String(v).replace(/\./g,"").replace(/,/g,"").trim();
+    var n = Number(v);
+    return isNaN(n) ? "" : n;
+  }
+
+  function renumber(){
+    $$("#tbody tr").forEach(function(tr, i){
+      var cell = tr.querySelector(".sttCell");
+      if (cell) cell.textContent = (i+1);
+    });
+  }
+
+  function recompute(row){
+    var cost = num(row.querySelector(".cost").value);
+    var price = num(row.querySelector(".price").value);
+    var feePct = Number(defaultFeeInput.value || 0);
+    var targetProfit = num(row.querySelector(".targetProfit").value);
+
+    var profitCell = row.querySelector(".profit");
+    var needPriceCell = row.querySelector(".needPrice");
+    var breakevenCell = row.querySelector(".breakeven");
+    var okCell = row.querySelector(".okCell");
+
+    var feeAmt = "";
+    if (price !== "" && !isNaN(feePct)) feeAmt = price * feePct;
+
+    var profit = "";
+    if (price !== "" && cost !== "" && feeAmt !== "") profit = price - cost - feeAmt;
+
+    var needPrice = "";
+    if (targetProfit !== "" && cost !== "" && (1-feePct)>0){
+      needPrice = (cost + targetProfit) / (1 - feePct);
+    }
+
+    var breakeven = "";
+    if (cost !== "" && (1-feePct)>0){
+      breakeven = cost / (1 - feePct);
+    }
+
+    profitCell.textContent = profit==="" ? "" : profit.toLocaleString("vi-VN");
+    needPriceCell.textContent = needPrice==="" ? "" : needPrice.toLocaleString("vi-VN");
+    breakevenCell.textContent = breakeven==="" ? "" : breakeven.toLocaleString("vi-VN");
+
+    okCell.innerHTML = "";
+    if (profit !== ""){
+      var span = document.createElement("span");
+      span.className = "badge " + (profit > 0 ? "yes" : "no");
+      span.textContent = profit > 0 ? "Có" : "Không";
+      okCell.appendChild(span);
+    }
+  }
+
+  function bindEnterSequence(row){
+    var seq = row.querySelectorAll(".seq");
+    seq.forEach(function(input, idx){
+      input.addEventListener("keydown", function(e){
+        if (e.key === "Enter"){
+          e.preventDefault();
+          if (idx < seq.length - 1){
+            seq[idx+1].focus();
+          } else {
+            addRow();
+          }
+        }
+      });
+    });
+  }
+
+  function preventNumberNudging(el){
+    // Block ArrowUp/ArrowDown and PageUp/PageDown
+    el.addEventListener("keydown", function(e){
+      if (e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === "PageUp" || e.key === "PageDown"){
+        e.preventDefault();
+      }
+    });
+    // Block mouse wheel change when focused
+    el.addEventListener("wheel", function(e){
+      if (document.activeElement === el){
+        e.preventDefault();
+      }
+    }, { passive: false });
+  }
+
+  function bindRow(row){
+    bindEnterSequence(row);
+
+    var orig = row.querySelector(".origPrice");
+    var price = row.querySelector(".price");
+    var cost = row.querySelector(".cost");
+    var target = row.querySelector(".targetProfit");
+
+    [orig, price, cost, target].forEach(preventNumberNudging);
+
+    orig.addEventListener("input", function(){
+      var sale = Number(defaultSaleInput.value || 0);
+      var v = Number(orig.value);
+      if (!isNaN(v)) price.value = Math.round(v * (1 - sale));
+      recompute(row);
+      scheduleAutosave();
+    });
+
+    price.addEventListener("input", function(){
+      var sale = Number(defaultSaleInput.value || 0);
+      var v = Number(price.value);
+      if (!isNaN(v) && (1 - sale) > 0) orig.value = Math.round(v / (1 - sale));
+      recompute(row);
+      scheduleAutosave();
+    });
+
+    ["cost","targetProfit","name","sku","note"].forEach(function(c){
+      var el = row.querySelector("."+c);
+      el.addEventListener("input", function(){ recompute(row); scheduleAutosave(); });
+    });
+
+    row.querySelector(".delRow").addEventListener("click", function(){
+      if (confirm("Xóa dòng này?")) { row.remove(); renumber(); showToast("Đã xóa 1 dòng"); scheduleAutosave(true); }
+    });
+  }
+
+  function addRow(){
+    var tr = document.importNode(rowTpl.content.firstElementChild, true);
+    tbody.appendChild(tr);
+    bindRow(tr);
+    renumber();
+    tr.querySelector(".name").focus();
+    recompute(tr);
+    showToast("Đã thêm 1 dòng");
+    updateStickyOffsets();
+  if (connectFileBtn) connectFileBtn.addEventListener("click", pickAndConnectFile);
+  if (cloudRestoreBtn) cloudRestoreBtn.addEventListener("click", restoreFromCloud);
+  if (cloudToggle) cloudToggle.addEventListener("change", function(){
+    if (cloudToggle.checked){ saveToCloud(); }
+  });
+  setInterval(saveToCloud, 60000);
+
+    scheduleAutosave(true);
+  }
+
+  // Search
+  function applySearch(){
+    var q = (searchBox.value || "").toLowerCase().trim();
+    $$("#tbody tr").forEach(function(tr){
+      var name = (tr.querySelector(".name").value || "").toLowerCase();
+      var sku  = (tr.querySelector(".sku").value  || "").toLowerCase();
+      tr.style.display = (q === "" || name.indexOf(q) !== -1 || sku.indexOf(q) !== -1) ? "" : "none";
+    });
+  }
+
+  // Apply defaults: keep price, recompute orig
+  function applyDefaultsToAll(){
+    var sale = Number(defaultSaleInput.value || 0);
+    $$("#tbody tr").forEach(function(tr){
+      var priceInput = tr.querySelector(".price");
+      var origInput  = tr.querySelector(".origPrice");
+      var pv = Number(priceInput.value);
+      var ov = Number(origInput.value);
+
+      if (!isNaN(pv) && pv!=="" && (1 - sale) > 0){
+        origInput.value = Math.round(pv / (1 - sale));
+      } else if ((pv==="" || isNaN(pv)) && !isNaN(ov)){
+        priceInput.value = Math.round(ov * (1 - sale));
+      }
+      recompute(tr);
+    });
+    showToast("Đã áp dụng thiết lập cho toàn bảng");
+    scheduleAutosave(true);
+  }
+
+  // Theme
+  function setTheme(mode){
+    document.body.classList.toggle("dark", mode === "dark");
+    themeToggle.textContent = mode === "dark" ? "☀️ Light Mode" : "🌙 Dark Mode";
+  }
+  function inferInitialTheme(){
+    var saved = localStorage.getItem("gia_online_tool_theme");
+    if (saved) return saved;
+    var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    return prefersDark ? "dark" : "light";
+  }
+  setTheme(inferInitialTheme());
+  themeToggle.addEventListener("click", function(){
+    var newMode = document.body.classList.contains("dark") ? "light" : "dark";
+    setTheme(newMode);
+    localStorage.setItem("gia_online_tool_theme", newMode);
+    scheduleAutosave(true);
+  });
+
+  // Data helpers
+  function toArray(){
+    return $$("#tbody tr").map(function(row){
+      return [
+        row.querySelector(".name").value,
+        row.querySelector(".sku").value,
+        row.querySelector(".cost").value,
+        row.querySelector(".origPrice").value,
+        row.querySelector(".price").value,
+        (row.querySelector(".profit").textContent || "").replace(/\./g,"").replace(/,/g,""),
+        row.querySelector(".targetProfit").value,
+        (row.querySelector(".needPrice").textContent || "").replace(/\./g,"").replace(/,/g,""),
+        (row.querySelector(".breakeven").textContent || "").replace(/\./g,"").replace(/,/g,""),
+        (row.querySelector(".okCell").textContent || ""),
+        row.querySelector(".note").value
+      ];
+    });
+  }
+  function headers(){
+    return ["Tên sản phẩm","SKU","Giá nhập","Giá bán gốc","Giá bán (sau sale)","Lãi (VNĐ)","Lợi nhuận mục tiêu (VNĐ)","Giá cần đạt (VNĐ)","Giá hòa vốn (VNĐ)","Có lãi?","Ghi chú"];
+  }
+
+  function toData(){
+    return $$("#tbody tr").map(function(row){
+      return {
+        name: row.querySelector(".name").value,
+        sku: row.querySelector(".sku").value,
+        cost: row.querySelector(".cost").value,
+        origPrice: row.querySelector(".origPrice").value,
+        price: row.querySelector(".price").value,
+        targetProfit: row.querySelector(".targetProfit").value,
+        note: row.querySelector(".note").value
+      };
+    });
+  }
+
+  function fromData(arr){
+    tbody.innerHTML = "";
+    if (!arr || !arr.length){ addRow(); return; }
+    arr.forEach(function(d){
+      var tr = document.importNode(rowTpl.content.firstElementChild, true);
+      tbody.appendChild(tr);
+      var row = tbody.querySelector("tr:last-child");
+      row.querySelector(".name").value = d.name || "";
+      row.querySelector(".sku").value = d.sku || "";
+      row.querySelector(".cost").value = d.cost || "";
+      row.querySelector(".origPrice").value = d.origPrice || "";
+      row.querySelector(".price").value = d.price || "";
+      row.querySelector(".targetProfit").value = d.targetProfit || "";
+      row.querySelector(".note").value = d.note || "";
+      bindRow(row);
+      recompute(row);
+    });
+    renumber();
+    updateStickyOffsets();
+  }
+
+  function download(filename, content, mime){
+    var a = document.createElement("a");
+    var blob = (content instanceof Uint8Array) ? new Blob([content], {type: mime || "application/octet-stream"}) : new Blob([content], {type: mime || "text/plain"});
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  // CSV/JSON import-export
+  function exportCSV(){
+    var rows = toArray();
+    var hdr = headers();
+    var all = [hdr].concat(rows);
+    var csv = all.map(function(r){
+      return r.map(function(v){
+        v = v==null ? "" : String(v);
+        if (/[\",\n]/.test(v)) return '\"' + v.replace(/\"/g,'\"\"') + '\"';
+        return v;
+      }).join(",");
+    }).join("\n");
+    download("du_lieu_gia_ban.csv", csv, "text/csv");
+    showToast("Đã xuất CSV");
+  }
+
+  function exportJSON(){
+    var payload = {
+      toolName: toolName.value,
+      defaultFee: defaultFeeInput.value,
+      defaultSale: defaultSaleInput.value,
+      rows: toData()
+    };
+    download("du_lieu_gia_ban.json", JSON.stringify(payload, null, 2), "application/json");
+    showToast("Đã xuất JSON");
+  }
+
+  // Minimal XLSX generator (same as v14)
+  function saveAsXLSX(){
+    var hdr = headers();
+    var rows = toArray();
+    function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+    var sheetRows = '';
+    var r = 1;
+    function cellRef(c){
+      var s = ""; c = c+1;
+      while(c>0){ var m=(c-1)%26; s = String.fromCharCode(65+m) + s; c = Math.floor((c-1)/26); }
+      return s + r;
+    }
+    sheetRows += '<row r="'+r+'">';
+    for (var c=0;c<hdr.length;c++){
+      sheetRows += '<c r="'+cellRef(c)+'" t="inlineStr"><is><t>'+esc(hdr[c])+'</t></is></c>';
+    }
+    sheetRows += '</row>'; r++;
+
+    rows.forEach(function(row){
+      sheetRows += '<row r="'+r+'">';
+      row.forEach(function(v, cidx){
+        var num = Number(v);
+        if (!isNaN(num) && v !== "" && cidx>=2 && cidx<=8){
+          sheetRows += '<c r="'+cellRef(cidx)+'"><v>'+num+'</v></c>';
+        } else {
+          sheetRows += '<c r="'+cellRef(cidx)+'" t="inlineStr"><is><t>'+esc(v==null?"":v)+'</t></is></c>';
+        }
+      });
+      sheetRows += '</row>'; r++;
+    });
+
+    var sheetXML = '<?xml version="1.0" encoding="UTF-8"?>'
+      + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+      + 'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+      + '<sheetData>'+sheetRows+'</sheetData></worksheet>';
+
+    var workbookXML = '<?xml version="1.0" encoding="UTF-8"?>'
+      + '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+      + 'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+      + '<sheets><sheet name="BangGia" sheetId="1" r:id="rId1"/></sheets></workbook>';
+
+    var relsRoot = '<?xml version="1.0" encoding="UTF-8"?>'
+      + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+      + '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>';
+
+    var relsWb = '<?xml version="1.0" encoding="UTF-8"?>'
+      + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+      + '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>';
+
+    var contentTypes = '<?xml version="1.0" encoding="UTF-8"?>'
+      + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+      + '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+      + '<Default Extension="xml" ContentType="application/xml"/>'
+      + '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+      + '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+      + '</Types>';
+
+    function crcTable(){
+      var c, table = new Uint32Array(256);
+      for (var n=0; n<256; n++){
+        c = n;
+        for (var k=0;k<8;k++){ c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); }
+        table[n] = c >>> 0;
+      }
+      return table;
+    }
+    var CRC_TABLE = crcTable();
+    function crc32(buf){
+      var crc = -1;
+      for (var i=0;i<buf.length;i++){
+        crc = (crc >>> 8) ^ CRC_TABLE[(crc ^ buf[i]) & 0xFF];
+      }
+      return (crc ^ (-1)) >>> 0;
+    }
+    function strToU8(s){ return new TextEncoder().encode(s); }
+    function writeUint32LE(buf, off, val){
+      buf[off] = val & 0xFF; buf[off+1] = (val>>>8) & 0xFF; buf[off+2] = (val>>>16) & 0xFF; buf[off+3] = (val>>>24) & 0xFF;
+    }
+    function writeUint16LE(buf, off, val){
+      buf[off] = val & 0xFF; buf[off+1] = (val>>>8) & 0xFF;
+    }
+    function fileHeader(name, data, crc, offset){
+      var nameU8 = strToU8(name);
+      var res = new Uint8Array(30 + nameU8.length + data.length);
+      writeUint32LE(res, 0, 0x04034b50);
+      writeUint16LE(res, 4, 10);
+      writeUint16LE(res, 6, 0);
+      writeUint16LE(res, 8, 0);
+      writeUint16LE(res, 10, 0);
+      writeUint16LE(res, 12, 0);
+      writeUint32LE(res, 14, crc);
+      writeUint32LE(res, 18, data.length);
+      writeUint32LE(res, 22, data.length);
+      writeUint16LE(res, 26, nameU8.length);
+      writeUint16LE(res, 28, 0);
+      res.set(nameU8, 30);
+      res.set(data, 30 + nameU8.length);
+      return res;
+    }
+    function centralHeader(name, data, crc, offset){
+      var nameU8 = strToU8(name);
+      var res = new Uint8Array(46 + nameU8.length);
+      writeUint32LE(res, 0, 0x02014b50);
+      writeUint16LE(res, 4, 20);
+      writeUint16LE(res, 6, 10);
+      writeUint16LE(res, 8, 0);
+      writeUint16LE(res, 10, 0);
+      writeUint16LE(res, 12, 0);
+      writeUint16LE(res, 14, 0);
+      writeUint32LE(res, 16, crc);
+      writeUint32LE(res, 20, data.length);
+      writeUint32LE(res, 24, data.length);
+      writeUint16LE(res, 28, nameU8.length);
+      writeUint16LE(res, 30, 0);
+      writeUint16LE(res, 32, 0);
+      writeUint16LE(res, 34, 0);
+      writeUint16LE(res, 36, 0);
+      writeUint32LE(res, 38, 0);
+      writeUint32LE(res, 42, offset);
+      res.set(nameU8, 46);
+      return res;
+    }
+    function endCentral(dirSize, dirOffset, count){
+      var res = new Uint8Array(22);
+      writeUint32LE(res, 0, 0x06054b50);
+      writeUint16LE(res, 4, 0);
+      writeUint16LE(res, 6, 0);
+      writeUint16LE(res, 8, count);
+      writeUint16LE(res, 10, count);
+      writeUint32LE(res, 12, dirSize);
+      writeUint32LE(res, 16, dirOffset);
+      writeUint16LE(res, 20, 0);
+      return res;
+    }
+
+    var files = {
+      "[Content_Types].xml": strToU8(contentTypes),
+      "_rels/.rels": strToU8(relsRoot),
+      "xl/workbook.xml": strToU8(workbookXML),
+      "xl/_rels/workbook.xml.rels": strToU8(relsWb),
+      "xl/worksheets/sheet1.xml": strToU8(sheetXML)
+    };
+
+    var parts = []; var dir = []; var offset = 0;
+    for (var name in files){
+      var data = files[name];
+      var crc = crc32(data);
+      var fh = fileHeader(name, data, crc, offset);
+      parts.push(fh);
+      var ch = centralHeader(name, data, crc, offset);
+      dir.push(ch);
+      offset += fh.length;
+    }
+    var dirSize = dir.reduce((a,b)=>a+b.length,0);
+    var dirOffset = offset;
+    var eocd = endCentral(dirSize, dirOffset, Object.keys(files).length);
+
+    var total = offset + dirSize + eocd.length;
+    var out = new Uint8Array(total);
+    var p=0;
+    parts.forEach(function(x){ out.set(x, p); p+=x.length; });
+    dir.forEach(function(x){ out.set(x, p); p+=x.length; });
+    out.set(eocd, p);
+
+    download("du_lieu_gia_ban.xlsx", out, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    showToast("Đã xuất Excel (.xlsx)");
+  }
+
+  // ====== AUTOSAVE helpers ======
+  function currentState(){
+    return {
+      toolName: toolName.value,
+      defaultFee: defaultFeeInput.value,
+      defaultSale: defaultSaleInput.value,
+      theme: (document.body.classList.contains("dark") ? "dark" : "light"),
+      rows: toData(),
+      ts: Date.now()
+    };
+  }
+  function saveNow(){
+    try {
+      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(currentState()));
+      saveToFile();
+      saveToCloud();
+      var now = Date.now();
+      if (now - lastToastAt > 20000){
+        showToast("Đã tự động lưu");
+        lastToastAt = now;
+      }
+    } catch (e) {
+      console.warn("Autosave failed:", e);
+    }
+  }
+  function scheduleAutosave(immediate){
+    clearTimeout(debounceTimer);
+    if (immediate){ saveNow(); return; }
+    debounceTimer = setTimeout(saveNow, 800); // save ~0.8s sau khi dừng gõ
+  }
+  // periodic safety save mỗi 60s
+  setInterval(saveNow, 60000);
+
+  function restoreIfAny(){
+    var raw = localStorage.getItem(AUTOSAVE_KEY);
+    if (!raw) return false;
+    try {
+      var state = JSON.parse(raw);
+      if (!state) return false;
+      toolName.value = state.toolName || toolName.value;
+      defaultFeeInput.value = state.defaultFee || defaultFeeInput.value;
+      defaultSaleInput.value = state.defaultSale || defaultSaleInput.value;
+      if (state.theme) setTheme(state.theme);
+      fromData(state.rows || []);
+      showToast("Đã khôi phục bản nháp tự động");
+      return true;
+    } catch(e){
+      console.warn("Cannot restore autosave:", e);
+      return false;
+    }
+  }
+
+  // Wire buttons
+  addRowBtn.addEventListener("click", function(){ addRow(); });
+  add5Btn.addEventListener("click", function(){ for (var i=0;i<5;i++) addRow(); });
+  searchBox.addEventListener("input", applySearch);
+  clearSearchBtn.addEventListener("click", function(){ searchBox.value=""; applySearch(); showToast("Đã xóa tìm"); });
+
+  defaultFeeInput.addEventListener("keydown", function(e){ if (e.key === "Enter") { e.preventDefault(); applyDefaultsToAll(); } });
+  defaultSaleInput.addEventListener("keydown", function(e){ if (e.key === "Enter") { e.preventDefault(); applyDefaultsToAll(); } });
+  [defaultFeeInput, defaultSaleInput, toolName].forEach(function(el){
+    el.addEventListener("input", function(){ scheduleAutosave(); });
+  });
+
+  // Block nudge on fee/sale fields as well
+  [defaultFeeInput, defaultSaleInput].forEach(preventNumberNudging);
+
+  // Clear All
+  $("#clearAll").addEventListener("click", function(){
+    if (!confirm("Bạn chắc chắn muốn XÓA HẾT toàn bộ bảng? Hành động này không thể hoàn tác.")) return;
+    var code = prompt("Nhập XOA để xác nhận xoá toàn bộ:");
+    if (code !== "XOA"){ showToast("Đã hủy xoá"); return; }
+    tbody.innerHTML = "";
+    var tr = document.importNode(rowTpl.content.firstElementChild, true);
+    tbody.appendChild(tr);
+    bindRow(tr);
+    renumber();
+    showToast("Đã xóa toàn bộ");
+    scheduleAutosave(true);
+  });
+
+  $("#exportCSV").addEventListener("click", exportCSV);
+  $("#exportJSON").addEventListener("click", exportJSON);
+  $("#exportXLSX").addEventListener("click", saveAsXLSX);
+  $("#importBtn").addEventListener("click", function(){ importFile.click(); });
+  $("#importFile").addEventListener("change", function(e){
+    var file = e.target.files && e.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function(){
+      try {
+        if (file.name.toLowerCase().endsWith(".json")){
+          var obj = JSON.parse(reader.result);
+          toolName.value = obj.toolName || toolName.value;
+          defaultFeeInput.value = obj.defaultFee || defaultFeeInput.value;
+          defaultSaleInput.value = obj.defaultSale || defaultSaleInput.value;
+          fromData(obj.rows || []);
+          showToast("Đã nhập JSON");
+        } else {
+          var text = String(reader.result);
+          var lines = text.split(/\r?\n/).filter(function(s){ return s.length>0; });
+          var header = lines.shift().split(",");
+          function idx(h){ return header.indexOf(h); }
+          function parseCSVLine(line){
+            var out = []; var cur = ""; var inQ = false;
+            for (var i=0;i<line.length;i++){
+              var ch = line[i];
+              if (inQ){
+                if (ch === '"'){
+                  if (line[i+1] === '"'){ cur+='"'; i++; }
+                  else inQ = false;
+                } else cur += ch;
+              } else {
+                if (ch === '"') inQ = true;
+                else if (ch === ","){ out.push(cur); cur=""; }
+                else cur += ch;
+              }
+            }
+            out.push(cur);
+            return out;
+          }
+          var arr = lines.map(function(line){
+            var cols = parseCSVLine(line);
+            return {
+              name: cols[idx("name")] || "",
+              sku: cols[idx("sku")] || "",
+              cost: cols[idx("cost")] || "",
+              origPrice: cols[idx("origPrice")] || "",
+              price: cols[idx("price")] || "",
+              targetProfit: cols[idx("targetProfit")] || "",
+              note: cols[idx("note")] || ""
+            };
+          });
+          fromData(arr);
+          showToast("Đã nhập CSV");
+        }
+        scheduleAutosave(true);
+      } catch (err) {
+        alert("Không thể đọc file: " + err.message);
+      }
+      importFile.value = "";
+    };
+    reader.readAsText(file);
+  });
+
+  // Init
+  bindRow(tbody.querySelector("tr"));
+  renumber();
+  updateStickyOffsets();
+
+  // try restore autosave
+  if (!restoreIfAny()){
+    // nếu không có dữ liệu khôi phục, vẫn đảm bảo ít nhất 1 dòng đã bind
+  }
+
+  // lưu 1 bản khi đóng tab (best effort)
+  window.addEventListener("beforeunload", function(){
+    saveNow();
+  });
+
+})();</script>
+</body>
+</html>
